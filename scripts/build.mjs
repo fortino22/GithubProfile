@@ -220,7 +220,7 @@ function edges(w, h, { top, bottom }) {
 
 const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// mirrors the theme's repo cards: label + arrow, ruled headline, detail, meta row
+// mirrors the theme's repo cards: label + arrow, headline, detail, meta row
 function contactCard(s, i, scheme) {
   const k = PAL[scheme];
   const meta = CONTACT[s.kind];
@@ -232,7 +232,6 @@ function contactCard(s, i, scheme) {
   const x = 29; // same inset as the half-width cards
   const big = 30;
   const base = 72;
-  const hair = (y) => `<line x1="${x - 2}" x2="${w - x}" y1="${y}" y2="${y}" stroke="${k.ink}" stroke-opacity=".16"/>`;
   return {
     w, h, title: meta.label ?? s.label, fonts: ['sans400', 'sans600'],
     css: `.lab{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:10.5px;fill:${k.mid}}` +
@@ -245,7 +244,6 @@ function contactCard(s, i, scheme) {
       `<path d="${i > 0 ? outline(w, h, corners).replace(/Z$/, '') : outline(w, h, corners)}" stroke="${k.ink}" stroke-opacity=".16"/>` +
       `<text x="${x}" y="30" class="lab">+ (Contact · ${meta.kind})</text>` +
       `<path d="M${w - 39} 30L${w - 30} 21M${w - 37} 21H${w - 30}V28" stroke="${k.ink}" stroke-width="1.4" fill="none" stroke-linecap="round"/>` +
-      hair(base - big * 0.645) + hair(base + big * 0.105) +
       `<path transform="translate(${x} ${base - 22}) scale(.9167)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
       `<text x="${x + 32}" y="${base}" class="big">${esc(meta.title)}</text>` +
       `<text x="${x}" y="102" class="s mid">${esc(meta.blurb)}</text>` +
