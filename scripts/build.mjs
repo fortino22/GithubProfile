@@ -144,13 +144,19 @@ const CARD_BORDER = /<rect x="\.5" y="\.5" width="[\d.]+" height="[\d.]+" rx="5\
 // the pair of hairlines the theme draws through big headlines (name, repo names)
 const HEADLINE_RULES = /(?:<line [^>]*stroke-opacity="0\.16"\/>){2}(?=<g class="__rise">)/g;
 
+// extra breathing room above and below every section
+const PAD_Y = 16;
+// a card's own top hairline (the footer has one); the panel draws the dividers
+const TOP_RULE = /<line [^>]*y1="0\.5" y2="0\.5"[^>]*\/>/g;
+
 function flat(card, w, scheme) {
   const pad = (w - card.w) / 2;
-  const body = card.body.replace(CARD_BORDER, '').replace(HEADLINE_RULES, '');
+  const h = card.h + PAD_Y * 2;
+  const body = card.body.replace(CARD_BORDER, '').replace(HEADLINE_RULES, '').replace(TOP_RULE, '');
   return {
-    ...card, w, radius: 0,
-    body: `<rect width="${w}" height="${card.h}" fill="${PAL[scheme].bg}"/>` +
-      (pad ? `<g transform="translate(${pad} 0)">${body}</g>` : body),
+    ...card, w, h, radius: 0,
+    body: `<rect width="${w}" height="${h}" fill="${PAL[scheme].bg}"/>` +
+      `<g transform="translate(${pad} ${PAD_Y})">${body}</g>`,
   };
 }
 
@@ -158,7 +164,10 @@ const blank = (h, scheme) => ({ w: CELL, h, title: '', fonts: [], body: `<rect w
 
 function panelRows(ctx, scheme) {
   const full = (c) => [flat(c, W, scheme)];
-  const half = (a, b) => [flat(a, CELL, scheme), b ? flat(b, CELL, scheme) : blank(a.h, scheme)];
+  const half = (a, b) => {
+    const left = flat(a, CELL, scheme);
+    return [left, b ? flat(b, CELL, scheme) : blank(left.h, scheme)];
+  };
   const rows = [];
   for (const s of cfg.sections ?? []) {
     if (s === 'header') rows.push(full(theme.header(ctx)));
@@ -228,7 +237,7 @@ function contactCard(s, i, scheme) {
   const meta = CONTACT[s.kind];
   const n = contacts.length;
   const w = W / n;
-  const h = 164;
+  const h = 164 + PAD_Y * 2;
   const r = stripAfterHeader ? 0 : R;
   const corners = { tl: i === 0 ? r : 0, tr: i === n - 1 ? r : 0 };
   const x = 29; // same inset as the half-width cards
@@ -243,12 +252,13 @@ function contactCard(s, i, scheme) {
       `<path d="${outline(w, h, corners)}" fill="${k.bg}"/>` +
       // every card after the first leaves its left edge to the one before, so dividers stay single
       `<path d="${i > 0 ? outline(w, h, corners).replace(/Z$/, '') : outline(w, h, corners)}" stroke="${k.ink}" stroke-opacity=".16"/>` +
+      `<g transform="translate(0 ${PAD_Y})">` +
       `<text x="${x}" y="30" class="lab">(${meta.kind})</text>` +
       `<path d="M${w - 39} 30L${w - 30} 21M${w - 37} 21H${w - 30}V28" stroke="${k.ink}" stroke-width="1.4" fill="none" stroke-linecap="round"/>` +
       `<path transform="translate(${x} ${base - 22}) scale(.9167)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
       `<text x="${x + 32}" y="${base}" class="big">${esc(meta.title)}</text>` +
       `<text x="${x}" y="102" class="s">${esc(meta.blurb)}</text>` +
-      `<text x="${x}" y="146" class="s" style="font-size:11.5px">${esc(meta.detail(s))}</text>`,
+      `<text x="${x}" y="146" class="s" style="font-size:11.5px">${esc(meta.detail(s))}</text></g>`,
   };
 }
 
