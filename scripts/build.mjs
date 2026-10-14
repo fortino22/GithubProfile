@@ -178,11 +178,15 @@ function panelRows(ctx, scheme) {
 const CONTACT = {
   linkedin: {
     label: 'Connect on LinkedIn',
+    kind: 'LinkedIn', title: 'LinkedIn', blurb: 'Connect with me, say hi or follow along.',
+    detail: (s) => `(/in/${s.label})`,
     color: { light: '#0A66C2', dark: '#3b8fe0' },
     path: 'M3 3h18v18H3zm3.3 7.2V18h2.5v-7.8zm1.2-3.9a1.4 1.4 0 1 0 0 2.9 1.4 1.4 0 0 0 0-2.9zM10.6 10.2V18h2.5v-4.1c0-1.1.2-2.1 1.6-2.1s1.4 1.3 1.4 2.2v4h2.5v-4.5c0-2.2-.5-3.9-3-3.9a2.6 2.6 0 0 0-2.4 1.3v-1.1z',
   },
   email: {
     label: null, // the address itself
+    kind: 'Email', title: 'Email', blurb: 'For work, collaboration or just a question.',
+    detail: (s) => `(${s.label})`,
     color: { light: theme.accent, dark: theme.accent },
     path: 'M2 5.5A1.5 1.5 0 0 1 3.5 4h17A1.5 1.5 0 0 1 22 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5zm2.2.5L12 11.6 19.8 6zM20 8.1l-8 5.7-8-5.7V18h16z',
   },
@@ -214,28 +218,38 @@ function edges(w, h, { top, bottom }) {
   return `M${x0} 0V${h}M${x1} 0V${h}`;
 }
 
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// mirrors the theme's repo cards: label + arrow, ruled headline, detail, meta row
 function contactCard(s, i, scheme) {
   const k = PAL[scheme];
   const meta = CONTACT[s.kind];
-  const text = meta.label ?? s.label;
   const n = contacts.length;
   const w = W / n;
-  const h = 64;
+  const h = 164;
   const r = stripAfterHeader ? 0 : R;
   const corners = { tl: i === 0 ? r : 0, tr: i === n - 1 ? r : 0 };
-  const kind = s.kind === 'email' ? 'Email' : 'LinkedIn';
+  const x = 29; // same inset as the half-width cards
+  const big = 30;
+  const base = 72;
+  const hair = (y) => `<line x1="${x - 2}" x2="${w - x}" y1="${y}" y2="${y}" stroke="${k.ink}" stroke-opacity=".16"/>`;
   return {
-    w, h, title: text, fonts: ['sans400'],
-    css: `.t{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;fill:${k.ink}}` +
-      `.l{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:10.5px;fill:${k.mid}}`,
+    w, h, title: meta.label ?? s.label, fonts: ['sans400', 'sans600'],
+    css: `.lab{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:10.5px;fill:${k.mid}}` +
+      `.big{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-weight:600;font-size:${big}px;letter-spacing:-.045em;fill:${k.ink}}` +
+      `.s{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;fill:${k.ink}}` +
+      `.mid{fill:${k.mid}}`,
     body:
       `<path d="${outline(w, h, corners)}" fill="${k.bg}"/>` +
-      // every button after the first leaves its left edge to the one before, so dividers stay single
+      // every card after the first leaves its left edge to the one before, so dividers stay single
       `<path d="${i > 0 ? outline(w, h, corners).replace(/Z$/, '') : outline(w, h, corners)}" stroke="${k.ink}" stroke-opacity=".16"/>` +
-      `<path transform="translate(28 22) scale(.8333)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
-      `<text x="58" y="28" class="l">+ (${kind})</text>` +
-      `<text x="58" y="45" class="t">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>` +
-      `<path d="M${w - 37} ${h / 2 + 4.5}L${w - 28} ${h / 2 - 4.5}M${w - 35} ${h / 2 - 4.5}H${w - 28}V${h / 2 + 2.5}" stroke="${k.mid}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+      `<text x="${x}" y="30" class="lab">+ (Contact · ${meta.kind})</text>` +
+      `<path d="M${w - 39} 30L${w - 30} 21M${w - 37} 21H${w - 30}V28" stroke="${k.ink}" stroke-width="1.4" fill="none" stroke-linecap="round"/>` +
+      hair(base - big * 0.645) + hair(base + big * 0.105) +
+      `<path transform="translate(${x} ${base - 22}) scale(.9167)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
+      `<text x="${x + 32}" y="${base}" class="big">${esc(meta.title)}</text>` +
+      `<text x="${x}" y="102" class="s mid">${esc(meta.blurb)}</text>` +
+      `<text x="${x}" y="146" class="s" style="font-size:11.5px">${esc(meta.detail(s))}</text>`,
   };
 }
 
