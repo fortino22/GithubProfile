@@ -7,7 +7,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  parseConfigYaml, fetchProfile, buildAssets, readmeBlock, mergeReadme, ASSET_DIR,
+  parseConfigYaml, fetchProfile, mergeReadme, makeCtx, resolveSocials,
+  renderCard, renderCombined, THEMES, ASSET_DIR, START, END,
 } from 'readme-atelier';
 
 const token = process.env.ATELIER_TOKEN || process.env.GITHUB_TOKEN;
@@ -126,14 +127,142 @@ if (featured.length) {
   if (picked.length) profile.repos = picked;
 }
 
-const assets = await buildAssets(profile, cfg, ASSET_DIR);
+// --- one seamless panel -----------------------------------------------------
+// Every card is stitched into a single SVG: one outer frame, hairline dividers,
+// no gaps. GitHub cannot make parts of an image clickable, so the contact links
+// sit right under the panel as separate buttons.
+
+const W = 840;
+const CELL = W / 2;
+const theme = THEMES[cfg.theme];
+const PAL = {
+  light: { bg: '#f2f2f0', ink: '#262626', mid: '#6a6a6a' },
+  dark: { bg: '#0f0f0f', ink: '#ececea', mid: '#9a9a96' },
+};
+// each card's own rounded border; the panel draws a shared frame instead
+const CARD_BORDER = /<rect x="\.5" y="\.5" width="[\d.]+" height="[\d.]+" rx="5\.5"[^>]*\/>/g;
+
+function flat(card, w, scheme) {
+  const pad = (w - card.w) / 2;
+  const body = card.body.replace(CARD_BORDER, '');
+  return {
+    ...card, w, radius: 0,
+    body: `<rect width="${w}" height="${card.h}" fill="${PAL[scheme].bg}"/>` +
+      (pad ? `<g transform="translate(${pad} 0)">${body}</g>` : body),
+  };
+}
+
+const blank = (h, scheme) => ({ w: CELL, h, title: '', fonts: [], body: `<rect width="${CELL}" height="${h}" fill="${PAL[scheme].bg}"/>` });
+
+function panelRows(ctx, scheme) {
+  const full = (c) => [flat(c, W, scheme)];
+  const half = (a, b) => [flat(a, CELL, scheme), b ? flat(b, CELL, scheme) : blank(a.h, scheme)];
+  const rows = [];
+  for (const s of cfg.sections ?? []) {
+    if (s === 'header') rows.push(full(theme.header(ctx)));
+    if (s === 'stats') rows.push(half(theme.stats(ctx), theme.languages(ctx)));
+    if (s === 'activity') rows.push(full(theme.activity(ctx)));
+    if (s === 'repos') {
+      const repos = ctx.p.repos.slice(0, 4).map((r) => theme.repo(ctx, r));
+      for (let i = 0; i < repos.length; i += 2) rows.push(half(repos[i], repos[i + 1]));
+    }
+    if (s === 'stack' && cfg.stack?.length) rows.push(full(theme.stack(ctx)));
+    if (s === 'footer') rows.push(full(theme.footer(ctx)));
+  }
+  return rows;
+}
+
+async function renderPanel(scheme) {
+  const ctx = makeCtx(profile, cfg, theme.accent, scheme);
+  const rows = panelRows(ctx, scheme);
+  const svg = await renderCombined(rows, `${ctx.name} · GitHub profile`, W, 0);
+  const H = rows.reduce((s, r) => s + Math.max(...r.map((c) => c.h)), 0);
+  const { ink } = PAL[scheme];
+
+  let lines = '';
+  let y = 0;
+  rows.forEach((row, i) => {
+    const h = Math.max(...row.map((c) => c.h));
+    if (row.length === 2)
+      lines += `<line x1="${CELL}" x2="${CELL}" y1="${y}" y2="${y + h}" stroke="${ink}" stroke-opacity=".12"/>`;
+    y += h;
+    if (i < rows.length - 1)
+      lines += `<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="${ink}" stroke-opacity=".12"/>`;
+  });
+  const frame = `<rect x=".5" y=".5" width="${W - 1}" height="${H - 1}" rx="9.5" stroke="${ink}" stroke-opacity=".16"/>`;
+
+  // clip everything to the rounded frame, then draw the dividers on top
+  const start = svg.indexOf('<svg x=');
+  const end = svg.lastIndexOf('</svg>');
+  return svg.slice(0, start) +
+    `<clipPath id="panel-clip"><rect width="${W}" height="${H}" rx="10"/></clipPath>` +
+    `<g clip-path="url(#panel-clip)">${svg.slice(start, end)}${lines}</g>${frame}</svg>`;
+}
+
+// --- contact buttons ---------------------------------------------------------
+
+const CONTACT = {
+  linkedin: {
+    label: 'Connect on LinkedIn',
+    color: { light: '#0A66C2', dark: '#3b8fe0' },
+    path: 'M3 3h18v18H3zm3.3 7.2V18h2.5v-7.8zm1.2-3.9a1.4 1.4 0 1 0 0 2.9 1.4 1.4 0 0 0 0-2.9zM10.6 10.2V18h2.5v-4.1c0-1.1.2-2.1 1.6-2.1s1.4 1.3 1.4 2.2v4h2.5v-4.5c0-2.2-.5-3.9-3-3.9a2.6 2.6 0 0 0-2.4 1.3v-1.1z',
+  },
+  email: {
+    label: null, // the address itself
+    color: { light: theme.accent, dark: theme.accent },
+    path: 'M2 5.5A1.5 1.5 0 0 1 3.5 4h17A1.5 1.5 0 0 1 22 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5zm2.2.5L12 11.6 19.8 6zM20 8.1l-8 5.7-8-5.7V18h16z',
+  },
+};
+const contacts = resolveSocials(cfg).filter((s) => CONTACT[s.kind]);
+
+function contactCard(s, scheme) {
+  const k = PAL[scheme];
+  const meta = CONTACT[s.kind];
+  const text = meta.label ?? s.label;
+  const h = 44;
+  const w = Math.round(52 + text.length * 13.5 * 0.55 + 44);
+  return {
+    w, h, title: text, fonts: ['sans400'],
+    css: `.t{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13.5px;fill:${k.ink}}`,
+    body:
+      `<rect x=".5" y=".5" width="${w - 1}" height="${h - 1}" rx="${(h - 1) / 2}" fill="${k.bg}" stroke="${k.ink}" stroke-opacity=".16"/>` +
+      `<path transform="translate(18 13) scale(.75)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
+      `<text x="46" y="27" class="t">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>` +
+      `<path d="M${w - 30} ${h / 2 + 4.5}L${w - 21} ${h / 2 - 4.5}M${w - 28} ${h / 2 - 4.5}H${w - 21}V${h / 2 + 2.5}" stroke="${k.mid}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+  };
+}
+
+const assets = {};
+const [primary, ...others] = theme.schemes;
+const suffix = (scheme) => (scheme === primary ? '' : '-' + scheme);
+for (const scheme of theme.schemes) {
+  assets[`${ASSET_DIR}/profile${suffix(scheme)}.svg`] = await renderPanel(scheme);
+  for (const s of contacts)
+    assets[`${ASSET_DIR}/contact-${s.kind}${suffix(scheme)}.svg`] = await renderCard(contactCard(s, scheme), 'ct');
+}
+
 if (fs.existsSync(ASSET_DIR))
   for (const f of fs.readdirSync(ASSET_DIR)) if (f.endsWith('.svg')) fs.rmSync(path.join(ASSET_DIR, f));
 fs.mkdirSync(ASSET_DIR, { recursive: true });
 for (const [file, svg] of Object.entries(assets)) fs.writeFileSync(file, svg);
 
-// repo cards have an empty url: drop their <a> wrapper so they are not links
-const block = readmeBlock(profile, cfg, { kind: 'files' }).replace(/<a href="">(<picture>[\s\S]*?<\/picture>)<\/a>/g, '$1');
+const pic = (name, attrs, alt) =>
+  '<picture>' +
+  others.map((s) => `<source media="(prefers-color-scheme: ${s})" srcset="./${ASSET_DIR}/${name}-${s}.svg"/>`).join('') +
+  `<img src="./${ASSET_DIR}/${name}.svg" ${attrs} alt="${alt}"/></picture>`;
+
+const name = cfg.name || profile.name || profile.login;
+const block = [
+  START,
+  '<!-- Generated by scripts/build.mjs with Readme Atelier. Edit atelier.yml instead of this block. -->',
+  '',
+  `<p align="center">${pic('profile', 'width="100%"', `${name} · GitHub profile`)}</p>`,
+  '',
+  ...(contacts.length
+    ? [`<p align="center">\n  ${contacts.map((s) => `<a href="${s.url}">${pic(`contact-${s.kind}`, 'height="44"', CONTACT[s.kind].label ?? s.label)}</a>`).join('&nbsp;&nbsp;\n  ')}\n</p>`, '']
+    : []),
+  END,
+].join('\n');
 const existing = fs.existsSync('README.md') ? fs.readFileSync('README.md', 'utf8') : null;
 const readme = mergeReadme(existing, block);
 fs.writeFileSync('README.md', readme);

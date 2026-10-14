@@ -30,6 +30,10 @@ stack:
   - apachekafka
   - centrifugo
   - javascript
+# Contact buttons under the profile panel, in this order.
+socials:
+  linkedin: https://www.linkedin.com/in/fortino-bong-06b6a3270/
+  email: fortino.bong@gmail.com
 # Featured repos. They may be private or in an org; cards are shown without links.
 repos: [sunibgram, wavely, ForYou, tokolaundry]
 sections:
