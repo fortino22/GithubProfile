@@ -1,0 +1,12 @@
+{
+  "name": "fortino22-profile",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/build.mjs --preview"
+  },
+  "dependencies": {
+    "readme-atelier": "github:monokernn/readme-atelier"
+  }
+}

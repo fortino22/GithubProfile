@@ -1,0 +1,48 @@
+# Rebuilds the profile README every day and whenever the config or build script changes.
+# Needs the repository secret ATELIER_TOKEN: a classic PAT with `repo` + `read:org`.
+name: Readme Atelier
+
+on:
+  push:
+    paths: ['atelier.yml', 'scripts/**', '.github/workflows/readme-atelier.yml']
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Without the secret the build would only see public repos and drop the
+      # private cards, so keep the committed cards until ATELIER_TOKEN is set.
+      - name: Check token
+        id: token
+        env:
+          ATELIER_TOKEN: ${{ secrets.ATELIER_TOKEN }}
+        run: echo "set=${{ env.ATELIER_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - if: steps.token.outputs.set == 'true'
+        run: npm install --no-audit --no-fund --loglevel=error
+      - name: Build profile
+        if: steps.token.outputs.set == 'true'
+        env:
+          ATELIER_TOKEN: ${{ secrets.ATELIER_TOKEN }}
+        run: node scripts/build.mjs
+      - name: Commit
+        if: steps.token.outputs.set == 'true'
+        run: |
+          git config user.name "fortino22"
+          git config user.email "153838130+fortino22@users.noreply.github.com"
+          git add README.md atelier
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "chore(atelier): refresh profile"
+            git push
+          fi

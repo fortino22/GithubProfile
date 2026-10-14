@@ -1,0 +1,41 @@
+# Readme Atelier: edit this file, commit, and your profile rebuilds itself.
+# Themes: minimal · y2k · minecraft · terminal · pixel · garden
+# Docs: https://github.com/monokernn/readme-atelier#config
+
+username: fortino22
+theme: minimal
+name: Fortino
+tagline: Software Engineer / Full-Stack Developer
+about:
+  - Laboratory Assistant
+  - Undergraduate Data Science Student
+  - BINUS University
+stack:
+  - go
+  - jupyter
+  - kotlin
+  - typescript
+  - c++
+  - rust
+  - python
+  - figma
+  - docker
+  - react
+  - svelte
+  - tailwindcss
+  - postgresql
+  - sql
+  - redis
+  - rabbitmq
+  - apachekafka
+  - centrifugo
+  - javascript
+# Featured repos. They may be private or in an org; cards are shown without links.
+repos: [sunibgram, wavely, ForYou, tokolaundry]
+sections:
+  - header
+  - stats
+  - activity
+  - repos
+  - stack
+  - footer
