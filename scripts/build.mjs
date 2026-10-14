@@ -172,8 +172,8 @@ function panelRows(ctx, scheme) {
   return rows;
 }
 // --- contact strip -----------------------------------------------------------
-// The top strip of the panel. Each button is its own image so it can be a link;
-// the strip owns the rounded top corners and the panel below keeps square ones.
+// A row of the panel right under the header. Each button is its own image so it
+// can be a link, which splits the panel into: header, strip, everything else.
 
 const CONTACT = {
   linkedin: {
@@ -189,14 +189,29 @@ const CONTACT = {
 };
 const contacts = resolveSocials(cfg).filter((s) => CONTACT[s.kind]);
 const R = 10; // outer corner radius
+// strip goes under the header when the header leads, otherwise on top
+const stripAfterHeader = contacts.length > 0 && cfg.sections?.[0] === 'header';
 
-/** Outline of a w×h box (inset half a pixel) with only the chosen corners rounded. */
+/** Closed outline of a w×h box (inset half a pixel) with only the chosen corners rounded. */
 function outline(w, h, { tl = 0, tr = 0, br = 0, bl = 0 }) {
   const x0 = 0.5, y0 = 0.5, x1 = w - 0.5, y1 = h - 0.5;
   return `M${x0} ${y0 + tl}` + (tl ? `A${tl} ${tl} 0 0 1 ${x0 + tl} ${y0}` : '') +
     `H${x1 - tr}` + (tr ? `A${tr} ${tr} 0 0 1 ${x1} ${y0 + tr}` : '') +
     `V${y1 - br}` + (br ? `A${br} ${br} 0 0 1 ${x1 - br} ${y1}` : '') +
     `H${x0 + bl}` + (bl ? `A${bl} ${bl} 0 0 1 ${x0} ${y1 - bl}` : '') + 'Z';
+}
+
+/**
+ * Border of one stacked piece. A piece with a neighbour above or below leaves that
+ * edge out (the neighbour draws it) and keeps square corners on that side.
+ */
+function edges(w, h, { top, bottom }) {
+  const rt = top ? R : 0, rb = bottom ? R : 0;
+  if (top && bottom) return outline(w, h, { tl: rt, tr: rt, br: rb, bl: rb });
+  const x0 = 0.5, x1 = w - 0.5, y0 = 0.5, y1 = h - 0.5;
+  if (top) return `M${x0} ${h}V${y0 + rt}A${rt} ${rt} 0 0 1 ${x0 + rt} ${y0}H${x1 - rt}A${rt} ${rt} 0 0 1 ${x1} ${y0 + rt}V${h}`;
+  if (bottom) return `M${x0} 0V${y1 - rb}A${rb} ${rb} 0 0 0 ${x0 + rb} ${y1}H${x1 - rb}A${rb} ${rb} 0 0 0 ${x1} ${y1 - rb}V0`;
+  return `M${x0} 0V${h}M${x1} 0V${h}`;
 }
 
 function contactCard(s, i, scheme) {
@@ -206,7 +221,8 @@ function contactCard(s, i, scheme) {
   const n = contacts.length;
   const w = W / n;
   const h = 64;
-  const corners = { tl: i === 0 ? R : 0, tr: i === n - 1 ? R : 0 };
+  const r = stripAfterHeader ? 0 : R;
+  const corners = { tl: i === 0 ? r : 0, tr: i === n - 1 ? r : 0 };
   const kind = s.kind === 'email' ? 'Email' : 'LinkedIn';
   return {
     w, h, title: text, fonts: ['sans400'],
@@ -225,10 +241,9 @@ function contactCard(s, i, scheme) {
 
 // --- panel -------------------------------------------------------------------
 
-async function renderPanel(scheme) {
-  const ctx = makeCtx(profile, cfg, theme.accent, scheme);
-  const rows = panelRows(ctx, scheme);
-  const svg = await renderCombined(rows, `${ctx.name} · GitHub profile`, W, 0);
+/** One stacked piece of the panel; `top`/`bottom` say whether it is the outer edge there. */
+async function renderPiece(rows, title, scheme, { top, bottom }) {
+  const svg = await renderCombined(rows, title, W, 0);
   const H = rows.reduce((s, r) => s + Math.max(...r.map((c) => c.h)), 0);
   const { ink } = PAL[scheme];
 
@@ -242,19 +257,14 @@ async function renderPanel(scheme) {
     if (i < rows.length - 1)
       lines += `<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="${ink}" stroke-opacity=".12"/>`;
   });
-  const top = contacts.length ? 0 : R;
-  const corners = { tl: top, tr: top, br: R, bl: R };
-  // under the contact strip the top edge is the strip's bottom edge, so leave it out
-  const edge = contacts.length
-    ? `M.5 0V${H - 0.5 - R}A${R} ${R} 0 0 0 ${0.5 + R} ${H - 0.5}H${W - 0.5 - R}A${R} ${R} 0 0 0 ${W - 0.5} ${H - 0.5 - R}V0`
-    : outline(W, H, corners);
-  const frame = `<path d="${edge}" stroke="${ink}" stroke-opacity=".16"/>`;
+  const rt = top ? R : 0, rb = bottom ? R : 0;
+  const frame = `<path d="${edges(W, H, { top, bottom })}" stroke="${ink}" stroke-opacity=".16"/>`;
 
   // clip everything to the frame, then draw the dividers on top
   const start = svg.indexOf('<svg x=');
   const end = svg.lastIndexOf('</svg>');
   return svg.slice(0, start) +
-    `<clipPath id="panel-clip"><path d="${outline(W, H, corners)}"/></clipPath>` +
+    `<clipPath id="panel-clip"><path d="${outline(W, H, { tl: rt, tr: rt, br: rb, bl: rb })}"/></clipPath>` +
     `<g clip-path="url(#panel-clip)">${svg.slice(start, end)}${lines}</g>${frame}</svg>`;
 }
 
@@ -262,7 +272,15 @@ const assets = {};
 const [primary, ...others] = theme.schemes;
 const suffix = (scheme) => (scheme === primary ? '' : '-' + scheme);
 for (const scheme of theme.schemes) {
-  assets[`${ASSET_DIR}/profile${suffix(scheme)}.svg`] = await renderPanel(scheme);
+  const ctx = makeCtx(profile, cfg, theme.accent, scheme);
+  const rows = panelRows(ctx, scheme);
+  const title = `${ctx.name} · GitHub profile`;
+  if (stripAfterHeader) {
+    assets[`${ASSET_DIR}/profile-header${suffix(scheme)}.svg`] = await renderPiece(rows.slice(0, 1), title, scheme, { top: true, bottom: false });
+    assets[`${ASSET_DIR}/profile${suffix(scheme)}.svg`] = await renderPiece(rows.slice(1), title, scheme, { top: false, bottom: true });
+  } else {
+    assets[`${ASSET_DIR}/profile${suffix(scheme)}.svg`] = await renderPiece(rows, title, scheme, { top: !contacts.length, bottom: true });
+  }
   for (const [i, s] of contacts.entries())
     assets[`${ASSET_DIR}/contact-${s.kind}${suffix(scheme)}.svg`] = await renderCard(contactCard(s, i, scheme), 'ct');
 }
@@ -277,18 +295,23 @@ const pic = (name, attrs, alt) =>
   others.map((s) => `<source media="(prefers-color-scheme: ${s})" srcset="./${ASSET_DIR}/${name}-${s}.svg"/>`).join('') +
   `<img src="./${ASSET_DIR}/${name}.svg" ${attrs} alt="${alt}"/></picture>`;
 
-// contact strip and panel share one paragraph with no whitespace between images;
+// every piece shares one paragraph with no whitespace between images;
 // align="top" drops the inline baseline gap so they stack flush
 const name = cfg.name || profile.name || profile.login;
 const pct = +(100 / (contacts.length || 1)).toFixed(4);
 const strip = contacts
   .map((s) => `<a href="${s.url}">${pic(`contact-${s.kind}`, `width="${pct}%" align="top"`, CONTACT[s.kind].label ?? s.label)}</a>`)
   .join('');
+const pieces = [
+  stripAfterHeader && pic('profile-header', 'width="100%" align="top"', name),
+  strip,
+  pic('profile', 'width="100%" align="top"', `${name} · GitHub profile`),
+].filter(Boolean);
 const block = [
   START,
   '<!-- Generated by scripts/build.mjs with Readme Atelier. Edit atelier.yml instead of this block. -->',
   '',
-  `<p align="center">${strip ? strip + '<br>' : ''}${pic('profile', 'width="100%" align="top"', `${name} · GitHub profile`)}</p>`,
+  `<p align="center">${pieces.join('<br>')}</p>`,
   '',
   END,
 ].join('\n');
@@ -298,12 +321,13 @@ fs.writeFileSync('README.md', readme);
 
 if (process.argv.includes('--preview')) {
   const body = readme.replace(/<!--[\s\S]*?-->/g, '');
-  fs.writeFileSync('preview.html', `<!doctype html><html><head><meta charset="utf-8"><title>${cfg.username} · preview</title><style>
-body{margin:0;background:#0d1117;color:#e6edf3;font:14px -apple-system,Segoe UI,Helvetica,Arial,sans-serif}
-@media (prefers-color-scheme: light){body{background:#fff;color:#1f2328}}
+  // GitHub's own markdown stylesheet, so spacing between images matches the real page
+  fs.writeFileSync('preview.html', `<!doctype html><html><head><meta charset="utf-8"><title>${cfg.username} · preview</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.5.1/github-markdown.css"><style>
+body{margin:0;background:#0d1117}
+@media (prefers-color-scheme: light){body{background:#fff}}
 main{max-width:880px;margin:32px auto;padding:24px;border:1px solid #30363d;border-radius:8px}
-p{margin:0 0 16px} img{max-width:100%}
-</style></head><body><main>${body}</main></body></html>`);
+</style></head><body><main class="markdown-body">${body}</main></body></html>`);
 }
 
 console.log(`✓ profile for @${profile.login}: ${Object.keys(assets).length} cards, featured: ${profile.repos.map((r) => r.name).join(', ')}`);
