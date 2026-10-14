@@ -171,6 +171,59 @@ function panelRows(ctx, scheme) {
   }
   return rows;
 }
+// --- contact strip -----------------------------------------------------------
+// The top strip of the panel. Each button is its own image so it can be a link;
+// the strip owns the rounded top corners and the panel below keeps square ones.
+
+const CONTACT = {
+  linkedin: {
+    label: 'Connect on LinkedIn',
+    color: { light: '#0A66C2', dark: '#3b8fe0' },
+    path: 'M3 3h18v18H3zm3.3 7.2V18h2.5v-7.8zm1.2-3.9a1.4 1.4 0 1 0 0 2.9 1.4 1.4 0 0 0 0-2.9zM10.6 10.2V18h2.5v-4.1c0-1.1.2-2.1 1.6-2.1s1.4 1.3 1.4 2.2v4h2.5v-4.5c0-2.2-.5-3.9-3-3.9a2.6 2.6 0 0 0-2.4 1.3v-1.1z',
+  },
+  email: {
+    label: null, // the address itself
+    color: { light: theme.accent, dark: theme.accent },
+    path: 'M2 5.5A1.5 1.5 0 0 1 3.5 4h17A1.5 1.5 0 0 1 22 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5zm2.2.5L12 11.6 19.8 6zM20 8.1l-8 5.7-8-5.7V18h16z',
+  },
+};
+const contacts = resolveSocials(cfg).filter((s) => CONTACT[s.kind]);
+const R = 10; // outer corner radius
+
+/** Outline of a w×h box (inset half a pixel) with only the chosen corners rounded. */
+function outline(w, h, { tl = 0, tr = 0, br = 0, bl = 0 }) {
+  const x0 = 0.5, y0 = 0.5, x1 = w - 0.5, y1 = h - 0.5;
+  return `M${x0} ${y0 + tl}` + (tl ? `A${tl} ${tl} 0 0 1 ${x0 + tl} ${y0}` : '') +
+    `H${x1 - tr}` + (tr ? `A${tr} ${tr} 0 0 1 ${x1} ${y0 + tr}` : '') +
+    `V${y1 - br}` + (br ? `A${br} ${br} 0 0 1 ${x1 - br} ${y1}` : '') +
+    `H${x0 + bl}` + (bl ? `A${bl} ${bl} 0 0 1 ${x0} ${y1 - bl}` : '') + 'Z';
+}
+
+function contactCard(s, i, scheme) {
+  const k = PAL[scheme];
+  const meta = CONTACT[s.kind];
+  const text = meta.label ?? s.label;
+  const n = contacts.length;
+  const w = W / n;
+  const h = 64;
+  const corners = { tl: i === 0 ? R : 0, tr: i === n - 1 ? R : 0 };
+  const kind = s.kind === 'email' ? 'Email' : 'LinkedIn';
+  return {
+    w, h, title: text, fonts: ['sans400'],
+    css: `.t{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;fill:${k.ink}}` +
+      `.l{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:10.5px;fill:${k.mid}}`,
+    body:
+      `<path d="${outline(w, h, corners)}" fill="${k.bg}"/>` +
+      // every button after the first leaves its left edge to the one before, so dividers stay single
+      `<path d="${i > 0 ? outline(w, h, corners).replace(/Z$/, '') : outline(w, h, corners)}" stroke="${k.ink}" stroke-opacity=".16"/>` +
+      `<path transform="translate(28 22) scale(.8333)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
+      `<text x="58" y="28" class="l">+ (${kind})</text>` +
+      `<text x="58" y="45" class="t">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>` +
+      `<path d="M${w - 37} ${h / 2 + 4.5}L${w - 28} ${h / 2 - 4.5}M${w - 35} ${h / 2 - 4.5}H${w - 28}V${h / 2 + 2.5}" stroke="${k.mid}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+  };
+}
+
+// --- panel -------------------------------------------------------------------
 
 async function renderPanel(scheme) {
   const ctx = makeCtx(profile, cfg, theme.accent, scheme);
@@ -189,47 +242,20 @@ async function renderPanel(scheme) {
     if (i < rows.length - 1)
       lines += `<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="${ink}" stroke-opacity=".12"/>`;
   });
-  const frame = `<rect x=".5" y=".5" width="${W - 1}" height="${H - 1}" rx="9.5" stroke="${ink}" stroke-opacity=".16"/>`;
+  const top = contacts.length ? 0 : R;
+  const corners = { tl: top, tr: top, br: R, bl: R };
+  // under the contact strip the top edge is the strip's bottom edge, so leave it out
+  const edge = contacts.length
+    ? `M.5 0V${H - 0.5 - R}A${R} ${R} 0 0 0 ${0.5 + R} ${H - 0.5}H${W - 0.5 - R}A${R} ${R} 0 0 0 ${W - 0.5} ${H - 0.5 - R}V0`
+    : outline(W, H, corners);
+  const frame = `<path d="${edge}" stroke="${ink}" stroke-opacity=".16"/>`;
 
-  // clip everything to the rounded frame, then draw the dividers on top
+  // clip everything to the frame, then draw the dividers on top
   const start = svg.indexOf('<svg x=');
   const end = svg.lastIndexOf('</svg>');
   return svg.slice(0, start) +
-    `<clipPath id="panel-clip"><rect width="${W}" height="${H}" rx="10"/></clipPath>` +
+    `<clipPath id="panel-clip"><path d="${outline(W, H, corners)}"/></clipPath>` +
     `<g clip-path="url(#panel-clip)">${svg.slice(start, end)}${lines}</g>${frame}</svg>`;
-}
-
-// --- contact buttons ---------------------------------------------------------
-
-const CONTACT = {
-  linkedin: {
-    label: 'Connect on LinkedIn',
-    color: { light: '#0A66C2', dark: '#3b8fe0' },
-    path: 'M3 3h18v18H3zm3.3 7.2V18h2.5v-7.8zm1.2-3.9a1.4 1.4 0 1 0 0 2.9 1.4 1.4 0 0 0 0-2.9zM10.6 10.2V18h2.5v-4.1c0-1.1.2-2.1 1.6-2.1s1.4 1.3 1.4 2.2v4h2.5v-4.5c0-2.2-.5-3.9-3-3.9a2.6 2.6 0 0 0-2.4 1.3v-1.1z',
-  },
-  email: {
-    label: null, // the address itself
-    color: { light: theme.accent, dark: theme.accent },
-    path: 'M2 5.5A1.5 1.5 0 0 1 3.5 4h17A1.5 1.5 0 0 1 22 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5zm2.2.5L12 11.6 19.8 6zM20 8.1l-8 5.7-8-5.7V18h16z',
-  },
-};
-const contacts = resolveSocials(cfg).filter((s) => CONTACT[s.kind]);
-
-function contactCard(s, scheme) {
-  const k = PAL[scheme];
-  const meta = CONTACT[s.kind];
-  const text = meta.label ?? s.label;
-  const h = 44;
-  const w = Math.round(52 + text.length * 13.5 * 0.55 + 44);
-  return {
-    w, h, title: text, fonts: ['sans400'],
-    css: `.t{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13.5px;fill:${k.ink}}`,
-    body:
-      `<rect x=".5" y=".5" width="${w - 1}" height="${h - 1}" rx="${(h - 1) / 2}" fill="${k.bg}" stroke="${k.ink}" stroke-opacity=".16"/>` +
-      `<path transform="translate(18 13) scale(.75)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
-      `<text x="46" y="27" class="t">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>` +
-      `<path d="M${w - 30} ${h / 2 + 4.5}L${w - 21} ${h / 2 - 4.5}M${w - 28} ${h / 2 - 4.5}H${w - 21}V${h / 2 + 2.5}" stroke="${k.mid}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
-  };
 }
 
 const assets = {};
@@ -237,8 +263,8 @@ const [primary, ...others] = theme.schemes;
 const suffix = (scheme) => (scheme === primary ? '' : '-' + scheme);
 for (const scheme of theme.schemes) {
   assets[`${ASSET_DIR}/profile${suffix(scheme)}.svg`] = await renderPanel(scheme);
-  for (const s of contacts)
-    assets[`${ASSET_DIR}/contact-${s.kind}${suffix(scheme)}.svg`] = await renderCard(contactCard(s, scheme), 'ct');
+  for (const [i, s] of contacts.entries())
+    assets[`${ASSET_DIR}/contact-${s.kind}${suffix(scheme)}.svg`] = await renderCard(contactCard(s, i, scheme), 'ct');
 }
 
 if (fs.existsSync(ASSET_DIR))
@@ -251,16 +277,19 @@ const pic = (name, attrs, alt) =>
   others.map((s) => `<source media="(prefers-color-scheme: ${s})" srcset="./${ASSET_DIR}/${name}-${s}.svg"/>`).join('') +
   `<img src="./${ASSET_DIR}/${name}.svg" ${attrs} alt="${alt}"/></picture>`;
 
+// contact strip and panel share one paragraph with no whitespace between images;
+// align="top" drops the inline baseline gap so they stack flush
 const name = cfg.name || profile.name || profile.login;
+const pct = +(100 / (contacts.length || 1)).toFixed(4);
+const strip = contacts
+  .map((s) => `<a href="${s.url}">${pic(`contact-${s.kind}`, `width="${pct}%" align="top"`, CONTACT[s.kind].label ?? s.label)}</a>`)
+  .join('');
 const block = [
   START,
   '<!-- Generated by scripts/build.mjs with Readme Atelier. Edit atelier.yml instead of this block. -->',
   '',
-  `<p align="center">${pic('profile', 'width="100%"', `${name} · GitHub profile`)}</p>`,
+  `<p align="center">${strip ? strip + '<br>' : ''}${pic('profile', 'width="100%" align="top"', `${name} · GitHub profile`)}</p>`,
   '',
-  ...(contacts.length
-    ? [`<p align="center">\n  ${contacts.map((s) => `<a href="${s.url}">${pic(`contact-${s.kind}`, 'height="44"', CONTACT[s.kind].label ?? s.label)}</a>`).join('&nbsp;&nbsp;\n  ')}\n</p>`, '']
-    : []),
   END,
 ].join('\n');
 const existing = fs.existsSync('README.md') ? fs.readFileSync('README.md', 'utf8') : null;
