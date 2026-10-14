@@ -141,10 +141,12 @@ const PAL = {
 };
 // each card's own rounded border; the panel draws a shared frame instead
 const CARD_BORDER = /<rect x="\.5" y="\.5" width="[\d.]+" height="[\d.]+" rx="5\.5"[^>]*\/>/g;
+// the pair of hairlines the theme draws through big headlines (name, repo names)
+const HEADLINE_RULES = /(?:<line [^>]*stroke-opacity="0\.16"\/>){2}(?=<g class="__rise">)/g;
 
 function flat(card, w, scheme) {
   const pad = (w - card.w) / 2;
-  const body = card.body.replace(CARD_BORDER, '');
+  const body = card.body.replace(CARD_BORDER, '').replace(HEADLINE_RULES, '');
   return {
     ...card, w, radius: 0,
     body: `<rect width="${w}" height="${card.h}" fill="${PAL[scheme].bg}"/>` +
@@ -236,17 +238,16 @@ function contactCard(s, i, scheme) {
     w, h, title: meta.label ?? s.label, fonts: ['sans400', 'sans600'],
     css: `.lab{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:10.5px;fill:${k.mid}}` +
       `.big{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-weight:600;font-size:${big}px;letter-spacing:-.045em;fill:${k.ink}}` +
-      `.s{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;fill:${k.ink}}` +
-      `.mid{fill:${k.mid}}`,
+      `.s{font-family:'RA Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;fill:${k.ink}}`,
     body:
       `<path d="${outline(w, h, corners)}" fill="${k.bg}"/>` +
       // every card after the first leaves its left edge to the one before, so dividers stay single
       `<path d="${i > 0 ? outline(w, h, corners).replace(/Z$/, '') : outline(w, h, corners)}" stroke="${k.ink}" stroke-opacity=".16"/>` +
-      `<text x="${x}" y="30" class="lab">+ (Contact · ${meta.kind})</text>` +
+      `<text x="${x}" y="30" class="lab">(${meta.kind})</text>` +
       `<path d="M${w - 39} 30L${w - 30} 21M${w - 37} 21H${w - 30}V28" stroke="${k.ink}" stroke-width="1.4" fill="none" stroke-linecap="round"/>` +
       `<path transform="translate(${x} ${base - 22}) scale(.9167)" d="${meta.path}" fill="${meta.color[scheme]}"/>` +
       `<text x="${x + 32}" y="${base}" class="big">${esc(meta.title)}</text>` +
-      `<text x="${x}" y="102" class="s mid">${esc(meta.blurb)}</text>` +
+      `<text x="${x}" y="102" class="s">${esc(meta.blurb)}</text>` +
       `<text x="${x}" y="146" class="s" style="font-size:11.5px">${esc(meta.detail(s))}</text>`,
   };
 }
